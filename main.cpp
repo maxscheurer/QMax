@@ -1,5 +1,6 @@
 #define SRCDATADIR "/usr/local/libint/2.3.0-beta.1/share/libint/2.3.0-beta.1/basis"
 #define LINALGWRAP_HAVE_ARMADILLO 1
+
 #include <iostream>
 #include <libint2.hpp>
 #include <fstream>
@@ -31,25 +32,20 @@ SmallMatrix<double> computeOneBodyIntegrals(Operator op, BasisSet basisSet, cons
     );
     s_engine.set_params(make_point_charges(atoms));
 
-    const auto& res = s_engine.results();
+    const auto &res = s_engine.results();
     auto shell2bf = basisSet.shell2bf();
-    double** overlapMatrix = new double*[7];
-    for (int m = 0; m < 7; ++m) {
-        overlapMatrix[m] = new double[7];
-    }
 
     for (int i = 0; i != basisSet.size(); ++i) {
-        for (int k = 0; k != basisSet.size() ; ++k) {
+        for (int k = 0; k != basisSet.size(); ++k) {
             s_engine.compute(basisSet[i], basisSet[k]);
             auto shellSizeI = basisSet[i].size();
             auto shellSizeK = basisSet[k].size();
             auto bf1 = shell2bf[i];
             auto bf2 = shell2bf[k];
-            auto integral_shell = res[0];
+            const auto* integral_shell = res[0];
             for (auto j = 0; j < shellSizeI; ++j) {
                 for (auto l = 0; l < shellSizeK; ++l) {
-//                    cout << j+bf1 << " " << l+bf2 << " " << integral_shell[j*shellSizeK+l] << endl;
-                    S(j+bf1,l+bf2) = integral_shell[j*shellSizeK+l];
+                    S(j + bf1, l + bf2) = integral_shell[j * shellSizeK + l];
                 }
             }
         }
@@ -61,7 +57,7 @@ double computeNuclearRepulsionEnergy(vector<Atom> atoms) {
     double nrep = 0.0;
     size_t natoms = atoms.size();
     for (int i = 0; i < natoms; ++i) {
-        for (int j = i+1; j < natoms; ++j) {
+        for (int j = i + 1; j < natoms; ++j) {
             auto xij = atoms[i].x - atoms[j].x;
             auto yij = atoms[i].y - atoms[j].y;
             auto zij = atoms[i].z - atoms[j].z;
@@ -97,68 +93,110 @@ int main() {
     double nrep = computeNuclearRepulsionEnergy(atoms);
 
 //    compute the basis set overlap
-    SmallMatrix<double> S = computeOneBodyIntegrals(Operator::overlap, basisSet,atoms);
+    SmallMatrix<double> S = computeOneBodyIntegrals(Operator::overlap, basisSet, atoms);
 
 //    compute the core Hamiltonian
-    SmallMatrix<double> NAttr = computeOneBodyIntegrals(Operator::nuclear, basisSet,atoms);
-    SmallMatrix<double> T = computeOneBodyIntegrals(Operator::kinetic, basisSet,atoms);
+    SmallMatrix<double> NAttr = computeOneBodyIntegrals(Operator::nuclear, basisSet, atoms);
+    SmallMatrix<double> T = computeOneBodyIntegrals(Operator::kinetic, basisSet, atoms);
 //    cout << endl << endl;
 //    cout << S << endl;
 //    cout << NAttr << endl;
     cout << "Nuclear repulsion energy is: " << nrep << endl;
 
     SmallMatrix<double> HCore = T + NAttr;
-    cout << "Core Hamiltonian: " << endl << HCore << endl;
+//    cout << "Core Hamiltonian: " << endl << HCore << endl;
+
+
+    Engine c_engine(Operator::coulomb,  // will compute overlap ints
+                    basisSet.max_nprim(),    // max # of primitives in shells this engine will accept
+                    basisSet.max_l()         // max angular momentum of shells this engine will accept
+    );
+    const auto &res = c_engine.results();
+    auto shell2bf = basisSet.shell2bf();
 
     bool converged = false;
     int scfiteration = 0;
 
-    SmallMatrix<double> F(nbf,nbf);
-    SmallMatrix<double> D(nbf,nbf);
+    SmallMatrix<double> F(nbf, nbf);
+    SmallMatrix<double> D(nbf, nbf);
     double escf = 0.0;
+    double oldescf = 0.0;
     while (!converged) {
         cout << "SCF iteration: " << scfiteration << endl;
         if (scfiteration == 0) {
             F = HCore;
-            auto sol = eigensystem_hermitian(F, S);
-            auto evals = sol.evalues();
-            auto evecs = sol.evectors();
-            auto v=evecs.subview(krims::range((unsigned  long) ndocc));
+        }
+        auto sol = eigensystem_hermitian(F, S);
+        auto evals = sol.evalues();
+        auto evecs = sol.evectors();
+        auto v = evecs.subview(krims::range((unsigned long) ndocc));
 //            cout << evals[0] << endl;
 //            cout << evecs << endl;
-            D = outer_prod_sum(v,v);
-            cout << "Density matrix" << endl << D << endl;
-            SmallMatrix<double> EEl = D*(HCore+F);
-            cout << EEl << endl;
-            double elEnergy = 0.0;
-            for (size_t col = 0; col < EEl.n_cols(); ++col) {
-                for (size_t row = 0; row < EEl.n_rows(); ++row) {
-                    elEnergy += EEl(row, col);
-                }
+        D = outer_prod_sum(v, v);
+//      cout << "Density matrix" << endl << D << endl;
+        SmallMatrix<double> EEl = D * (HCore + F);
+//            cout << EEl << endl;
+        double elEnergy = 0.0;
+        for (size_t col = 0; col < EEl.n_cols(); ++col) {
+            for (size_t row = 0; row < EEl.n_rows(); ++row) {
+                elEnergy += EEl(row, col);
             }
-            escf = elEnergy + nrep;
-            cout << "Initial electronic energy: " << elEnergy << endl;
-            cout << "Initial SCF energy: " << escf << endl;
+        }
+        escf = elEnergy + nrep;
+        cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
+        cout << scfiteration << " : SCF energy: " << escf << endl;
 
-            SmallMatrix<double> FNew(nbf,nbf);
-            for (int i = 0; i < nshells; ++i) {
-                for (int j = 0; j < nshells; ++j) {
-                    FNew(i,j)=HCore(i,j);
-                    for (int k = 0; k < nshells; ++k) {
-                        for (int l = 0; l < nshells; ++l) {
-//                            FNew(i,j) += D(i,j)*
+        if (fabs(escf-oldescf) < 0.1) {
+            converged = true;
+        }
+        oldescf = escf;
+
+        SmallMatrix<double> FNew(nbf, nbf);
+        for (int i = 0; i < nshells; ++i) {
+            for (int j = 0; j < nshells; ++j) {
+                for (int k = 0; k < nshells; ++k) {
+                    for (int l = 0; l < nshells; ++l) {
+                        c_engine.compute(basisSet[i], basisSet[j], basisSet[k], basisSet[l]);
+
+                        auto bf1 = shell2bf[i];
+                        auto bf2 = shell2bf[j];
+                        auto bf3 = shell2bf[k];
+                        auto bf4 = shell2bf[l];
+                        const auto * integral_shell1 = res[0];
+
+                        if (integral_shell1 == nullptr)
+                            continue;
+
+                        for (int s1 = 0, integralIndex = 0; s1 < basisSet[i].size(); ++s1) {
+                            for (int s2 = 0; s2 < basisSet[j].size(); ++s2) {
+                                for (int s3 = 0; s3 < basisSet[k].size(); ++s3) {
+                                    for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex) {
+                                        FNew(s1 + bf1, s2 + bf2) = FNew(s1 + bf1, s2 + bf2) + 2.0*D(s3 + bf3, s4 + bf4)*integral_shell1[integralIndex];
+                                    }
+                                }
+                            }
                         }
+
+                        c_engine.compute(basisSet[i], basisSet[k], basisSet[j], basisSet[l]);
+                        const auto * integral_shell2 = res[0];
+                        if (integral_shell2 == nullptr) {
+                            continue;
+                        }
+                        for (int s1 = 0, integralIndex = 0; s1 < basisSet[i].size(); ++s1) {
+                            for (int s2 = 0; s2 < basisSet[j].size(); ++s2) {
+                                for (int s3 = 0; s3 < basisSet[k].size(); ++s3) {
+                                    for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex) {
+                                        FNew(s1 + bf1, s2 + bf2) = FNew(s1 + bf1, s2 + bf2) - D(s3 + bf3, s4 + bf4) * integral_shell2[integralIndex];
+                                    }
+                                }
+                            }
+                        }
+
                     }
                 }
             }
-
-        } else {
-
-
-
-
-            converged = true;
         }
+        F = FNew + HCore;
         ++scfiteration;
     }
 
