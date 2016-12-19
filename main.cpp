@@ -208,7 +208,7 @@ int main() {
         F = HCore + G;
         //cout << G << endl;
 
-	cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
+	//cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
         ++scfiteration;
     }
 
