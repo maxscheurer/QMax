@@ -9,6 +9,8 @@
 #include <linalgwrap/SmallMatrix.hh>
 #include <linalgwrap/SmallVector.hh>
 #include <linalgwrap/eigensystem.hh>
+#include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
 
 using libint2::Shell;
 using libint2::Engine;
@@ -19,6 +21,9 @@ using namespace std;
 using libint2::read_dotxyz;
 using libint2::make_point_charges;
 using namespace linalgwrap;
+
+typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
+        Matrix;
 
 
 SmallMatrix<double> computeOneBodyIntegrals(Operator op, BasisSet basisSet, const vector<Atom> atoms) {
@@ -106,23 +111,23 @@ int main() {
 //    cout << endl << endl;
 //    cout << T << endl;
 //    cout << endl << endl;
-	cout << "Nuclear repulsion energy is: " << nrep << endl;
+//    cout << "Nuclear repulsion energy is: " << nrep << endl;
 
     SmallMatrix<double> HCore = T + NAttr;
-//    cout << "Core Hamiltonian: " << endl << HCore << endl;
+    cout << "Core Hamiltonian: " << endl << HCore << endl;
 
 
     bool converged = false;
     int scfiteration = 0;
 
-    SmallMatrix<double> F(nbf,nbf);
+    SmallMatrix<double> F(nbf, nbf);
+//    SmallMatrix<double> D(nbf, nbf);
     double escf = 0.0;
     double oldescf = 0.0;
-    SmallMatrix<double> oldD(nbf,nbf);
     while (!converged) {
         Engine c_engine(Operator::coulomb,  // will compute overlap ints
                         basisSet.max_nprim(),    // max # of primitives in shells this engine will accept
-                        basisSet.max_l(),0         // max angular momentum of shells this engine will accept
+                        basisSet.max_l()         // max angular momentum of shells this engine will accept
         );
         const auto &res = c_engine.results();
         auto shell2bf = basisSet.shell2bf();
@@ -131,84 +136,80 @@ int main() {
         if (scfiteration == 0) {
             F = HCore;
         }
+//        cout << F << endl;
         auto sol = eigensystem_hermitian(F, S);
         auto evals = sol.evalues();
         auto evecs = sol.evectors();
         auto v = evecs.subview(krims::range((unsigned long) ndocc));
-        SmallMatrix<double> D = outer_prod_sum(v,v);
-//        cout << "Density matrix" << endl << D << endl;
+//            cout << evals[0] << endl;
+        cout << evecs << endl;
+        SmallMatrix<double> D = outer_prod_sum(v, v);
+        cout << "Density matrix" << endl << D << endl;
+        SmallMatrix<double> EEl = D * (HCore + F);
+//            cout << EEl << endl;
         double elEnergy = 0.0;
-        for (int i = 0; i < nbf; ++i) {
-            for (int j = 0; j < nbf; ++j) {
-                elEnergy += D(i,j)*(HCore(i,j)+F(i,j));
+        for (size_t col = 0; col < EEl.n_cols(); ++col) {
+            for (size_t row = 0; row < EEl.n_rows(); ++row) {
+                elEnergy += EEl(row, col);
             }
         }
-	double rmsd = norm_frobenius(D-oldD);
-	oldD = D;
         escf = elEnergy + nrep;
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
 
-        if (fabs(escf-oldescf) < 0.001 && rmsd < 0.0001) {
+        if (fabs(escf-oldescf) < 0.1) {
             converged = true;
         }
         oldescf = escf;
 
-        SmallMatrix<double> G(nbf,nbf);
+        SmallMatrix<double> FNew(nbf, nbf);
         for (int i = 0; i < nshells; ++i) {
-            auto bf1 = shell2bf[i];
             for (int j = 0; j < nshells; ++j) {
-                auto bf2 = shell2bf[j];
                 for (int k = 0; k < nshells; ++k) {
-                    auto bf3 = shell2bf[k];
                     for (int l = 0; l < nshells; ++l) {
-                        auto bf4 = shell2bf[l];
                         c_engine.compute(basisSet[i], basisSet[j], basisSet[k], basisSet[l]);
+
+                        auto bf1 = shell2bf[i];
+                        auto bf2 = shell2bf[j];
+                        auto bf3 = shell2bf[k];
+                        auto bf4 = shell2bf[l];
                         const auto * integral_shell1 = res[0];
 
                         if (integral_shell1 == nullptr)
                             continue;
 
                         for (int s1 = 0, integralIndex = 0; s1 < basisSet[i].size(); ++s1) {
-                            const auto i1 = s1 + bf1;
                             for (int s2 = 0; s2 < basisSet[j].size(); ++s2) {
-                                const auto i2 = s2 + bf2;
 //                                FNew(s1 + bf1, s2 + bf2) = 0;
                                 for (int s3 = 0; s3 < basisSet[k].size(); ++s3) {
-                                    const auto i3 = s3 + bf3;
                                     for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex) {
-                                        const auto i4 = s4 + bf4;
-                                        G(i1, i2) += D(i3, i4)*2.0*integral_shell1[integralIndex];
-					G(i1,i4) -= D(i2,i3)*integral_shell1[integralIndex];
+                                        FNew(s1 + bf1, s2 + bf2) = FNew(s1 + bf1, s2 + bf2) + 2.0*D(s3 + bf3, s4 + bf4)*integral_shell1[integralIndex];
                                     }
                                 }
                             }
                         }
-/*
+
                         c_engine.compute(basisSet[i], basisSet[k], basisSet[j], basisSet[l]);
                         const auto * integral_shell2 = res[0];
                         if (integral_shell2 == nullptr) {
                             continue;
                         }
-
                         for (int s1 = 0, integralIndex2 = 0; s1 < basisSet[i].size(); ++s1) {
                             for (int s2 = 0; s2 < basisSet[j].size(); ++s2) {
                                 for (int s3 = 0; s3 < basisSet[k].size(); ++s3) {
                                     for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex2) {
-                                        G(s1 + bf1, s2 + bf2) -= D(s3 + bf3, s4 + bf4) * integral_shell2[integralIndex2];
+                                        FNew(s1 + bf1, s2 + bf2) = FNew(s1 + bf1, s2 + bf2) - D(s3 + bf3, s4 + bf4) * integral_shell2[integralIndex2];
                                     }
                                 }
                             }
                         }
-*/
+
                     }
                 }
             }
         }
-        F = HCore + G;
-        //cout << G << endl;
-
-	cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
+        F = HCore + FNew;
+//        cout << F << endl;
         ++scfiteration;
     }
 
