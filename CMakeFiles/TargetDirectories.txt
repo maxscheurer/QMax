@@ -1,3 +1,0 @@
-/home/max/ClionProjects/QMax/CMakeFiles/edit_cache.dir
-/home/max/ClionProjects/QMax/CMakeFiles/rebuild_cache.dir
-/home/max/ClionProjects/QMax/CMakeFiles/QMax.dir
