@@ -20,6 +20,26 @@ using libint2::read_dotxyz;
 using libint2::make_point_charges;
 using namespace linalgwrap;
 
+double* computeMullikenCharges(const SmallMatrix<double> D,const SmallMatrix<double> S, vector<Atom> atoms, const BasisSet basisSet) {
+	SmallMatrix<double> P = D*S;
+	auto shell2bf = basisSet.shell2bf();
+	double* mullikenCharges = new double[atoms.size()];
+	fill_n(mullikenCharges,atoms.size(),0);
+	vector<long> shell2atom = basisSet.shell2atom(atoms);
+	for (vector<long>::iterator i = shell2atom.begin(); i != shell2atom.end(); ++i) {
+		auto currentShell = i-shell2atom.begin();
+		for (auto bf = 0; bf != basisSet[currentShell].size(); ++bf) {
+			auto idx = bf+shell2bf[currentShell];
+			mullikenCharges[*i] -= 2*P(idx,idx);
+		}
+	}
+
+	for (vector<Atom>::iterator at = atoms.begin(); at != atoms.end(); ++at) {
+		auto idx = at-atoms.begin();
+		mullikenCharges[idx] += (*at).atomic_number;
+	}
+	return mullikenCharges;	
+}
 
 SmallMatrix<double> computeOneBodyIntegrals(Operator op, BasisSet basisSet, const vector<Atom> atoms) {
     int nbf = basisSet.nbf();
@@ -114,7 +134,7 @@ int main() {
 
     bool converged = false;
     int scfiteration = 0;
-
+	SmallMatrix<double> finalD(nbf,nbf);
     SmallMatrix<double> F(nbf,nbf);
     double escf = 0.0;
     double oldescf = 0.0;
@@ -151,6 +171,8 @@ int main() {
 
         if (fabs(escf-oldescf) < 0.001 && rmsd < 0.0001) {
             converged = true;
+	    finalD = D;
+	    break;
         }
         oldescf = escf;
 
@@ -211,7 +233,11 @@ int main() {
 	//cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
         ++scfiteration;
     }
-
+	
+    double* mulliken = computeMullikenCharges(finalD,S,atoms,basisSet);
+    for (auto i = 0; i < atoms.size(); ++i) {
+	cout << mulliken[i] << endl;
+    }
 //    don't use libint after this!
     libint2::finalize();
     return 0;
