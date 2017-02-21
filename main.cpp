@@ -20,25 +20,26 @@ using libint2::read_dotxyz;
 using libint2::make_point_charges;
 using namespace linalgwrap;
 
-double* computeMullikenCharges(const SmallMatrix<double> D,const SmallMatrix<double> S, vector<Atom> atoms, const BasisSet basisSet) {
-	SmallMatrix<double> P = D*S;
-	auto shell2bf = basisSet.shell2bf();
-	double* mullikenCharges = new double[atoms.size()];
-	fill_n(mullikenCharges,atoms.size(),0);
-	vector<long> shell2atom = basisSet.shell2atom(atoms);
-	for (vector<long>::iterator i = shell2atom.begin(); i != shell2atom.end(); ++i) {
-		auto currentShell = i-shell2atom.begin();
-		for (auto bf = 0; bf != basisSet[currentShell].size(); ++bf) {
-			auto idx = bf+shell2bf[currentShell];
-			mullikenCharges[*i] -= 2*P(idx,idx);
-		}
-	}
+double *computeMullikenCharges(const SmallMatrix<double> D, const SmallMatrix<double> S, vector<Atom> atoms,
+                               const BasisSet basisSet) {
+    SmallMatrix<double> P = D * S;
+    auto shell2bf = basisSet.shell2bf();
+    double *mullikenCharges = new double[atoms.size()];
+    fill_n(mullikenCharges, atoms.size(), 0);
+    vector<long> shell2atom = basisSet.shell2atom(atoms);
+    for (vector<long>::iterator i = shell2atom.begin(); i != shell2atom.end(); ++i) {
+        auto currentShell = i - shell2atom.begin();
+        for (auto bf = 0; bf != basisSet[currentShell].size(); ++bf) {
+            auto idx = bf + shell2bf[currentShell];
+            mullikenCharges[*i] -= 2 * P(idx, idx);
+        }
+    }
 
-	for (vector<Atom>::iterator at = atoms.begin(); at != atoms.end(); ++at) {
-		auto idx = at-atoms.begin();
-		mullikenCharges[idx] += (*at).atomic_number;
-	}
-	return mullikenCharges;	
+    for (vector<Atom>::iterator at = atoms.begin(); at != atoms.end(); ++at) {
+        auto idx = at - atoms.begin();
+        mullikenCharges[idx] += (*at).atomic_number;
+    }
+    return mullikenCharges;
 }
 
 SmallMatrix<double> computeOneBodyIntegrals(Operator op, BasisSet basisSet, const vector<Atom> atoms) {
@@ -63,9 +64,9 @@ SmallMatrix<double> computeOneBodyIntegrals(Operator op, BasisSet basisSet, cons
             auto shellSizeK = basisSet[k].size();
             auto bf1 = shell2bf[i];
             auto bf2 = shell2bf[k];
-            const auto* integral_shell = res[0];
+            const auto *integral_shell = res[0];
             for (auto j = 0, intcount = 0; j < shellSizeI; ++j) {
-                for (auto l = 0; l < shellSizeK; ++l,++intcount) {
+                for (auto l = 0; l < shellSizeK; ++l, ++intcount) {
                     S(j + bf1, l + bf2) = integral_shell[intcount];
                 }
             }
@@ -94,12 +95,12 @@ int main() {
     libint2::initialize();
 
 //    read the geometry input
-    string xyzfilename = "/home/max/ClionProjects/QMax/water_libint.xyz";
+    string xyzfilename = "/home/max/ClionProjects/QMax/water.xyz";
     ifstream input_file(xyzfilename);
     vector<Atom> atoms = read_dotxyz(input_file);
 
 //    assign a basis set & print number of BF
-    BasisSet basisSet("STO-3G", atoms);
+    BasisSet basisSet("6-31G*", atoms);
     cout << "Number of basis functions: " << basisSet.nbf() << endl;
     int nbf = basisSet.nbf();
     int nshells = basisSet.size();
@@ -126,7 +127,7 @@ int main() {
 //    cout << endl << endl;
 //    cout << T << endl;
 //    cout << endl << endl;
-	cout << "Nuclear repulsion energy is: " << nrep << endl;
+    cout << "Nuclear repulsion energy is: " << nrep << endl;
 
     SmallMatrix<double> HCore = T + NAttr;
 //    cout << "Core Hamiltonian: " << endl << HCore << endl;
@@ -134,15 +135,15 @@ int main() {
 
     bool converged = false;
     int scfiteration = 0;
-	SmallMatrix<double> finalD(nbf,nbf);
-    SmallMatrix<double> F(nbf,nbf);
+    SmallMatrix<double> finalD(nbf, nbf);
+    SmallMatrix<double> F(nbf, nbf);
     double escf = 0.0;
     double oldescf = 0.0;
-    SmallMatrix<double> oldD(nbf,nbf);
+    SmallMatrix<double> oldD(nbf, nbf);
     while (!converged) {
         Engine c_engine(Operator::coulomb,  // will compute overlap ints
                         basisSet.max_nprim(),    // max # of primitives in shells this engine will accept
-                        basisSet.max_l(),0         // max angular momentum of shells this engine will accept
+                        basisSet.max_l(), 0         // max angular momentum of shells this engine will accept
         );
         const auto &res = c_engine.results();
         auto shell2bf = basisSet.shell2bf();
@@ -155,28 +156,33 @@ int main() {
         auto evals = sol.evalues();
         auto evecs = sol.evectors();
         auto v = evecs.subview(krims::range((unsigned long) ndocc));
-        SmallMatrix<double> D = outer_prod_sum(v,v);
+        SmallMatrix<double> D = outer_prod_sum(v, v);
 //        cout << "Density matrix" << endl << D << endl;
         double elEnergy = 0.0;
         for (int i = 0; i < nbf; ++i) {
             for (int j = 0; j < nbf; ++j) {
-                elEnergy += D(i,j)*(HCore(i,j)+F(i,j));
+                elEnergy += D(i, j) * (HCore(i, j) + F(i, j));
             }
         }
-	double rmsd = norm_frobenius(D-oldD);
-	oldD = D;
+        double rmsd = norm_frobenius(D - oldD);
+        oldD = D;
         escf = elEnergy + nrep;
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
 
-        if (fabs(escf-oldescf) < 0.001 && rmsd < 0.0001) {
+        if (fabs(escf - oldescf) < 0.001 && rmsd < 0.0001) {
             converged = true;
-	    finalD = D;
-	    break;
+            finalD = D;
+	    vector<double> energies;
+	    for (int o = 0; o < ndocc; ++o) {
+		    	cout << evals[o] << endl;
+			energies.push_back(evals[o]);
+		} 
+            break;
         }
         oldescf = escf;
 
-        SmallMatrix<double> G(nbf,nbf);
+        SmallMatrix<double> G(nbf, nbf);
         for (int i = 0; i < nshells; ++i) {
             auto bf1 = shell2bf[i];
             for (int j = 0; j < nshells; ++j) {
@@ -186,7 +192,7 @@ int main() {
                     for (int l = 0; l < nshells; ++l) {
                         auto bf4 = shell2bf[l];
                         c_engine.compute(basisSet[i], basisSet[j], basisSet[k], basisSet[l]);
-                        const auto * integral_shell1 = res[0];
+                        const auto *integral_shell1 = res[0];
 
                         if (integral_shell1 == nullptr)
                             continue;
@@ -200,8 +206,8 @@ int main() {
                                     const auto i3 = s3 + bf3;
                                     for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex) {
                                         const auto i4 = s4 + bf4;
-                                        G(i1, i2) += D(i3, i4)*2.0*integral_shell1[integralIndex];
-					G(i1,i4) -= D(i2,i3)*integral_shell1[integralIndex];
+                                        G(i1, i2) += D(i3, i4) * 2.0 * integral_shell1[integralIndex];
+                                        G(i1, i4) -= D(i2, i3) * integral_shell1[integralIndex];
                                     }
                                 }
                             }
@@ -230,15 +236,17 @@ int main() {
         F = HCore + G;
         //cout << G << endl;
 
-	//cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
+        //cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
         ++scfiteration;
     }
-	
-    double* mulliken = computeMullikenCharges(finalD,S,atoms,basisSet);
+
+    cout << "--- Computing Mulliken Point Charges ---" << endl;
+    double *mulliken = computeMullikenCharges(finalD, S, atoms, basisSet);
     for (auto i = 0; i < atoms.size(); ++i) {
-	cout << mulliken[i] << endl;
+        cout << mulliken[i] << endl;
     }
 //    don't use libint after this!
     libint2::finalize();
+    cout << "--- Does is Djent? ---" << endl;
     return 0;
 }
