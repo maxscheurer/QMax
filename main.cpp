@@ -20,6 +20,8 @@ using libint2::read_dotxyz;
 using libint2::make_point_charges;
 using namespace linalgwrap;
 
+#define THRESH 1e-10
+
 double *computeMullikenCharges(const SmallMatrix<double> D, const SmallMatrix<double> S, vector<Atom> atoms,
                                const BasisSet basisSet) {
     SmallMatrix<double> P = D * S;
@@ -93,14 +95,14 @@ double computeNuclearRepulsionEnergy(vector<Atom> atoms) {
 
 int main() {
     libint2::initialize();
-
+	std::cout.precision(10);
 //    read the geometry input
     string xyzfilename = "/home/max/ClionProjects/QMax/water.xyz";
     ifstream input_file(xyzfilename);
     vector<Atom> atoms = read_dotxyz(input_file);
 
 //    assign a basis set & print number of BF
-    BasisSet basisSet("6-31G*", atoms);
+    BasisSet basisSet("cc-pVTZ", atoms);
     cout << "Number of basis functions: " << basisSet.nbf() << endl;
     int nbf = basisSet.nbf();
     int nshells = basisSet.size();
@@ -164,13 +166,15 @@ int main() {
                 elEnergy += D(i, j) * (HCore(i, j) + F(i, j));
             }
         }
+	SmallMatrix<double> P = S*oldD*F-F*oldD*S;
+	double pError = norm_frobenius_squared(P);
         double rmsd = norm_frobenius(D - oldD);
         oldD = D;
         escf = elEnergy + nrep;
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
-
-        if (fabs(escf - oldescf) < 0.001 && rmsd < 0.0001) {
+	cout << "Pulay error: " << pError << endl;
+        if (pError < THRESH && scfiteration) {
             converged = true;
             finalD = D;
 	    vector<double> energies;
@@ -247,6 +251,6 @@ int main() {
     }
 //    don't use libint after this!
     libint2::finalize();
-    cout << "--- Does is Djent? ---" << endl;
+    cout << "--- Uh pick up a pancake  ---" << endl;
     return 0;
 }
