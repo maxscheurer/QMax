@@ -1,3 +1,5 @@
+// Author: Adrian Dempwolff
+
 #ifndef OPTIONPARSER_H
 #define OPTIONPARSER_H
 

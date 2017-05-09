@@ -1,3 +1,9 @@
+/*
+ * Author: Adrian Dempwolff
+ *
+ * */
+
+
 #include <iostream>
 using std::cout;
 using std::endl;
