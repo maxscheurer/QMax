@@ -1,14 +1,18 @@
-#define SRCDATADIR "/usr/local/libint/2.3.0-beta.1/share/libint/2.3.0-beta.1/basis"
-#define LINALGWRAP_HAVE_ARMADILLO 1
+#define SRCDATADIR "/Users/maxscheurer/Software/libint_final/share/libint/2.4.2/basis/"
+// #define LINALGWRAP_HAVE_ARMADILLO 1
 
 #include <iostream>
 #include <libint2.hpp>
 #include <fstream>
 #include <string>
 #include <vector>
-#include <linalgwrap/SmallMatrix.hh>
-#include <linalgwrap/SmallVector.hh>
-#include <linalgwrap/eigensystem.hh>
+#include <lazyten/SmallMatrix.hh>
+#include <lazyten/SmallVector.hh>
+#include <lazyten/eigensystem.hh>
+#include <deque>
+using std::deque;
+
+#include "OptionParser.h"
 
 using libint2::Shell;
 using libint2::Engine;
@@ -18,9 +22,44 @@ using libint2::Atom;
 using namespace std;
 using libint2::read_dotxyz;
 using libint2::make_point_charges;
-using namespace linalgwrap;
+using namespace lazyten;
 
 #define THRESH 1e-10
+#define EN_THRESH 1e-8
+
+
+Options_t parseCommandline(int argc, char **argv, deque<string> &arguments) {
+	OptionParser parser("%prog [options]");
+	parser.add_string_option("xyzFile", "-x", "--xyz-filename",
+		"The input geometry as xyz file.", "mol.xyz",
+		"XYZ_FILENAME");
+  parser.add_string_option("basisSet", "-b", "--basis",
+  		"Basis set for the calculation.", "sto-3g",
+  		"BASIS_SET");
+	parser.add_int_option("maxSCFcycles", "-c", "", "Maximum number of SCF cycles"
+                        , 50, "MAX_SCF_CYCLES");
+	// parser.add_float_option("initialValue", "", "--initial-value",
+	// 	"The initial value to use for the calculation.", 1.1);
+	// parser.add_count_option("verbosity", "-v", "--verbose", "The verbosity level."
+	// 	" Repeating this option increases verbosity.", 0);
+	// parser.add_vector_option("stringList", "-s", "--string-item",
+	// 	"A string to process.  This option may be specified more than once.",
+	// 	"STRING");
+	// parser.add_bool_option("fancy", "-f", "--fancy", "Switch on fancy formatting.");
+	//cout << parser.get_by_option("-i").info() << endl;
+	//cout << parser.get_by_name("help").info() << endl;
+	//cout << parser.get_by_name("counter").info() << endl;
+	Options_t options = parser.parse_args(argc, argv, arguments);
+	//cout << parser.get_by_name("counter").info() << endl;
+	parser.print_info() << endl;
+	//parser.print_help();
+	//cout << "arguments: ";
+	//for (auto el : arguments) {
+		//cout << el << ", ";
+	//}
+	//cout << endl;
+	return options;
+}
 
 double *computeMullikenCharges(const SmallMatrix<double> D, const SmallMatrix<double> S, vector<Atom> atoms,
                                const BasisSet basisSet) {
@@ -93,16 +132,27 @@ double computeNuclearRepulsionEnergy(vector<Atom> atoms) {
     return nrep;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    deque<string> arguments;
+    Options_t options = parseCommandline(argc, argv, arguments);
+  	// for (auto opt : options) {
+  	// 	cout << opt.first << endl;
+  	// }
+  	// for (const string s : options["stringList"].get_vector()) {
+  	// 	cout << '"' << s << "\", ";
+  	// }
+  	// cout << endl;
+
     libint2::initialize();
+    std::cout << "libint initialized" << std::endl;
 	std::cout.precision(10);
 //    read the geometry input
-    string xyzfilename = "/home/max/ClionProjects/QMax/water.xyz";
+    string xyzfilename = options["xyzFile"].get_string();
     ifstream input_file(xyzfilename);
     vector<Atom> atoms = read_dotxyz(input_file);
 
 //    assign a basis set & print number of BF
-    BasisSet basisSet("cc-pVTZ", atoms);
+    BasisSet basisSet(options["basisSet"].get_string(), atoms);
     cout << "Number of basis functions: " << basisSet.nbf() << endl;
     int nbf = basisSet.nbf();
     int nshells = basisSet.size();
@@ -139,6 +189,7 @@ int main() {
     int scfiteration = 0;
     SmallMatrix<double> finalD(nbf, nbf);
     SmallMatrix<double> F(nbf, nbf);
+    double escf_old = 0.0;
     double escf = 0.0;
     double oldescf = 0.0;
     SmallMatrix<double> oldD(nbf, nbf);
@@ -170,18 +221,19 @@ int main() {
 	double pError = norm_frobenius_squared(P);
         double rmsd = norm_frobenius(D - oldD);
         oldD = D;
+        escf_old = escf;
         escf = elEnergy + nrep;
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
 	cout << "Pulay error: " << pError << endl;
-        if (pError < THRESH && scfiteration) {
+        if (pError < THRESH && scfiteration && abs(escf-escf_old) < THRESH) {
             converged = true;
             finalD = D;
 	    vector<double> energies;
 	    for (int o = 0; o < ndocc; ++o) {
 		    	cout << evals[o] << endl;
 			energies.push_back(evals[o]);
-		} 
+		}
             break;
         }
         oldescf = escf;
@@ -216,23 +268,6 @@ int main() {
                                 }
                             }
                         }
-/*
-                        c_engine.compute(basisSet[i], basisSet[k], basisSet[j], basisSet[l]);
-                        const auto * integral_shell2 = res[0];
-                        if (integral_shell2 == nullptr) {
-                            continue;
-                        }
-
-                        for (int s1 = 0, integralIndex2 = 0; s1 < basisSet[i].size(); ++s1) {
-                            for (int s2 = 0; s2 < basisSet[j].size(); ++s2) {
-                                for (int s3 = 0; s3 < basisSet[k].size(); ++s3) {
-                                    for (int s4 = 0; s4 < basisSet[l].size(); ++s4, ++integralIndex2) {
-                                        G(s1 + bf1, s2 + bf2) -= D(s3 + bf3, s4 + bf4) * integral_shell2[integralIndex2];
-                                    }
-                                }
-                            }
-                        }
-*/
                     }
                 }
             }

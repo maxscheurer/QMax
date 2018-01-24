@@ -42,3 +42,8 @@ CTestTestfile.cmake
 
 *.input.*
 .idea
+
+build/
+Makefile
+QMax
+cmake_install.cmake
