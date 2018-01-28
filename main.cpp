@@ -12,6 +12,8 @@
 #include <deque>
 using std::deque;
 
+#include "cppe.hpp"
+
 #include "OptionParser.h"
 
 using libint2::Shell;
@@ -25,7 +27,7 @@ using libint2::make_point_charges;
 using namespace lazyten;
 
 #define THRESH 1e-10
-#define EN_THRESH 1e-8
+#define EN_THRESH 1e-6
 
 
 Options_t parseCommandline(int argc, char **argv, deque<string> &arguments) {
@@ -51,7 +53,7 @@ Options_t parseCommandline(int argc, char **argv, deque<string> &arguments) {
 	//cout << parser.get_by_name("counter").info() << endl;
 	Options_t options = parser.parse_args(argc, argv, arguments);
 	//cout << parser.get_by_name("counter").info() << endl;
-	parser.print_info() << endl;
+	// parser.print_info() << endl;
 	//parser.print_help();
 	//cout << "arguments: ";
 	//for (auto el : arguments) {
@@ -132,20 +134,52 @@ double computeNuclearRepulsionEnergy(vector<Atom> atoms) {
     return nrep;
 }
 
+BasisSet sortBasis(const BasisSet basisSet, const std::vector<Atom> atoms) {
+	auto shell2atom = basisSet.shell2atom(atoms);
+  auto atom2shell = basisSet.atom2shell(atoms);
+
+  // loop over all atoms
+	BasisSet newBas = basisSet;
+	newBas.clear();
+	for (auto a : atom2shell) {
+		std::vector<std::vector<Shell>> newShellsForAtom(12);
+		int size = 0;
+		for (auto shellIdx : a) {
+			Shell currentShell = basisSet[shellIdx];
+			int max_l = 0;
+      for (const auto& cr: currentShell.contr) {
+        if (cr.l > max_l) {
+          max_l = cr.l;
+        }
+      }
+			if (max_l > size) {
+				size = max_l;
+			}
+			newShellsForAtom[max_l].push_back(currentShell);
+		}
+		for (size_t i = 0; i <= size; ++i) {
+			for (auto sh : newShellsForAtom[i]) {
+				newBas.push_back(sh);
+				// std::cout << sh << std::endl;
+			}
+		}
+	}
+	// basisSet.clear();
+	// for (size_t i = 0; i < basisSet.size(); ++i) {
+	// 	basisSet[i] = newBas[i];
+	// }
+	// basisSet = newBas;
+	// std::cout << basisSet.size() << std::endl;
+	return newBas;
+}
+
 int main(int argc, char **argv) {
     deque<string> arguments;
     Options_t options = parseCommandline(argc, argv, arguments);
-  	// for (auto opt : options) {
-  	// 	cout << opt.first << endl;
-  	// }
-  	// for (const string s : options["stringList"].get_vector()) {
-  	// 	cout << '"' << s << "\", ";
-  	// }
-  	// cout << endl;
 
     libint2::initialize();
     std::cout << "libint initialized" << std::endl;
-	std::cout.precision(10);
+	  std::cout.precision(10);
 //    read the geometry input
     string xyzfilename = options["xyzFile"].get_string();
     ifstream input_file(xyzfilename);
@@ -153,9 +187,24 @@ int main(int argc, char **argv) {
 
 //    assign a basis set & print number of BF
     BasisSet basisSet(options["basisSet"].get_string(), atoms);
+
+		bool pure = false;
+		for(auto s: basisSet) {
+    	if(s.contr[0].pure) {
+				pure = true;
+			}
+    }
+
+    // sort the basis set by atom and angular momentum of shells
+		basisSet = sortBasis(basisSet, atoms);
+		basisSet.set_pure(pure);
+		std::cout << "Pure: " << pure << std::endl;
+
     cout << "Number of basis functions: " << basisSet.nbf() << endl;
     int nbf = basisSet.nbf();
     int nshells = basisSet.size();
+
+		std::cout << "Number of shells: " << nshells << std::endl;
 
 //    count number of electrons
     auto nelectron = 0;
@@ -192,6 +241,7 @@ int main(int argc, char **argv) {
     double escf_old = 0.0;
     double escf = 0.0;
     double oldescf = 0.0;
+    int maxSCFiterations = options["maxSCFcycles"].get_int();
     SmallMatrix<double> oldD(nbf, nbf);
     while (!converged) {
         Engine c_engine(Operator::coulomb,  // will compute overlap ints
@@ -226,7 +276,7 @@ int main(int argc, char **argv) {
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
 	cout << "Pulay error: " << pError << endl;
-        if (pError < THRESH && scfiteration && abs(escf-escf_old) < THRESH) {
+        if (pError < THRESH && scfiteration && abs(escf-escf_old) < EN_THRESH) {
             converged = true;
             finalD = D;
 	    vector<double> energies;
@@ -277,13 +327,29 @@ int main(int argc, char **argv) {
 
         //cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
         ++scfiteration;
+        if (scfiteration >= maxSCFiterations) {
+          std::cout << "Number of SCF iteractions exceeded: " << scfiteration << std::endl;
+          break;
+        }
     }
 
-    cout << "--- Computing Mulliken Point Charges ---" << endl;
-    double *mulliken = computeMullikenCharges(finalD, S, atoms, basisSet);
-    for (auto i = 0; i < atoms.size(); ++i) {
-        cout << mulliken[i] << endl;
-    }
+		// cout << finalD << endl;
+		std::vector<double> dmat;
+		for (size_t i = 0; i < nbf; i++) {
+			for (size_t j = 0; j < nbf; j++) {
+				// cout << finalD(i,j) << endl;
+				dmat.push_back(finalD(i,j));
+			}
+		}
+
+		std::string potfile("pehf_cpp.pot");
+		call_pe_energy(potfile, atoms, basisSet, dmat);
+    // cout << "--- Computing Mulliken Point Charges ---" << endl;
+    // double *mulliken = computeMullikenCharges(finalD, S, atoms, basisSet);
+    // for (auto i = 0; i < atoms.size(); ++i) {
+    //     cout << mulliken[i] << endl;
+    // }
+
 //    don't use libint after this!
     libint2::finalize();
     cout << "--- Uh pick up a pancake  ---" << endl;
