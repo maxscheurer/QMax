@@ -40,6 +40,7 @@ Options_t parseCommandline(int argc, char **argv, deque<string> &arguments) {
   		"BASIS_SET");
 	parser.add_int_option("maxSCFcycles", "-c", "", "Maximum number of SCF cycles"
                         , 50, "MAX_SCF_CYCLES");
+	parser.add_bool_option("pe", "-pe", "--pol_embed", "Switch on PE calculation.", false);
 	// parser.add_float_option("initialValue", "", "--initial-value",
 	// 	"The initial value to use for the calculation.", 1.1);
 	// parser.add_count_option("verbosity", "-v", "--verbose", "The verbosity level."
@@ -177,6 +178,8 @@ int main(int argc, char **argv) {
     deque<string> arguments;
     Options_t options = parseCommandline(argc, argv, arguments);
 
+		bool peCalculation = options["pe"].get_bool();
+
     libint2::initialize();
     std::cout << "libint initialized" << std::endl;
 	  std::cout.precision(10);
@@ -205,6 +208,12 @@ int main(int argc, char **argv) {
     int nshells = basisSet.size();
 
 		std::cout << "Number of shells: " << nshells << std::endl;
+
+		if (peCalculation) {
+			std::string potfile("pehf_cpp.pot");
+			call_pe_init(potfile, atoms, basisSet);
+		}
+		int embeddingEnergy = 0.0;
 
 //    count number of electrons
     auto nelectron = 0;
@@ -267,23 +276,23 @@ int main(int argc, char **argv) {
                 elEnergy += D(i, j) * (HCore(i, j) + F(i, j));
             }
         }
-	SmallMatrix<double> P = S*oldD*F-F*oldD*S;
-	double pError = norm_frobenius_squared(P);
+				SmallMatrix<double> P = S*oldD*F-F*oldD*S;
+				double pError = norm_frobenius_squared(P);
         double rmsd = norm_frobenius(D - oldD);
         oldD = D;
         escf_old = escf;
         escf = elEnergy + nrep;
         cout << scfiteration << " : Electronic energy: " << elEnergy << endl;
         cout << scfiteration << " : SCF energy: " << escf << endl;
-	cout << "Pulay error: " << pError << endl;
+				cout << "Pulay error: " << pError << endl;
         if (pError < THRESH && scfiteration && abs(escf-escf_old) < EN_THRESH) {
             converged = true;
             finalD = D;
-	    vector<double> energies;
-	    for (int o = 0; o < ndocc; ++o) {
-		    	cout << evals[o] << endl;
-			energies.push_back(evals[o]);
-		}
+	    			vector<double> energies;
+	    			for (int o = 0; o < ndocc; ++o) {
+		    			cout << evals[o] << endl;
+							energies.push_back(evals[o]);
+						}
             break;
         }
         oldescf = escf;
@@ -322,10 +331,22 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        F = HCore + G;
-        //cout << G << endl;
+				std::vector<double> dmat;
+				for (size_t i = 0; i < nbf; i++) {
+					for (size_t j = 0; j < nbf; j++) {
+						// cout << finalD(i,j) << endl;
+						dmat.push_back(D(i,j));
+					}
+				}
 
-        //cout << G.is_hermitian(1e-13) << " " << G.is_symmetric(1e-13) << endl;
+				if (peCalculation) {
+					SmallMatrix<double> fockPE = call_pe_fock(dmat);
+	        F = HCore + G + fockPE;
+				} else {
+					F = HCore + G;
+				}
+
+        // cout << F.is_hermitian(1e-13) << " " << F.is_symmetric(1e-13) << endl;
         ++scfiteration;
         if (scfiteration >= maxSCFiterations) {
           std::cout << "Number of SCF iteractions exceeded: " << scfiteration << std::endl;
@@ -334,21 +355,27 @@ int main(int argc, char **argv) {
     }
 
 		// cout << finalD << endl;
-		std::vector<double> dmat;
-		for (size_t i = 0; i < nbf; i++) {
-			for (size_t j = 0; j < nbf; j++) {
-				// cout << finalD(i,j) << endl;
-				dmat.push_back(finalD(i,j));
+		if (peCalculation) {
+			std::vector<double> dmat;
+			for (size_t i = 0; i < nbf; i++) {
+				for (size_t j = 0; j < nbf; j++) {
+					// cout << finalD(i,j) << endl;
+					dmat.push_back(finalD(i,j));
+				}
 			}
+			call_pe_energy(dmat);
 		}
 
-		std::string potfile("pehf_cpp.pot");
-		call_pe_energy(potfile, atoms, basisSet, dmat);
     // cout << "--- Computing Mulliken Point Charges ---" << endl;
     // double *mulliken = computeMullikenCharges(finalD, S, atoms, basisSet);
     // for (auto i = 0; i < atoms.size(); ++i) {
     //     cout << mulliken[i] << endl;
     // }
+		std::cout << "--- SCF Summary ---" << std::endl;
+		std::cout << "SCF Energy: " << escf << std::endl;
+		// std::cout << "Embedding Energy: " << embeddingEnergy << std::endl;
+		std::cout << "Total Energy: " << escf + embeddingEnergy << std::endl;
+		std::cout << "-------------------" << std::endl;
 
 //    don't use libint after this!
     libint2::finalize();
