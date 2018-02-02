@@ -2,11 +2,30 @@ cmake_minimum_required(VERSION 3.6)
 project(QMax)
 # list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -L/home/max/Libraries/lazyten/build/external/krims/src/krims \
-# -I/home/max/Libraries/lazyten/external/krims/src -L/home/max/Libraries/lazyten/build/src/lazyten -I/home/max/Libraries/lazyten/src \
-# -I/usr/local/libint/2.3.0-beta.1/include -I/usr/local/libint/2.3.0-beta.1/include/libint2 -I/usr/include/eigen3 -L/usr/local/libint/2.3.0-beta.1/lib ")
-# find_library(krims REQUIRED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -I /Users/maxscheurer/Software/lazyten/build/external/krims/src -I/Users/maxscheurer/Software/lazyten/external/krims/src/ -I/usr/local/include/eigen3/ -I/Users/maxscheurer/Software/lazyten/build/src -I/Users/maxscheurer/Software/lazyten/src -I/Users/maxscheurer/Software/libint_final/include -I/Users/maxscheurer/Software/libint_final/libint2 -L/Users/maxscheurer/Software/libint_final/lib -L/Users/maxscheurer/Software/lazyten/build/external/krims/src/krims -L/Users/maxscheurer/Software/lazyten/build/src/lazyten -I/Users/maxscheurer/Documents/master_thesis/programming/call_pe/library -L/Users/maxscheurer/Documents/master_thesis/programming/call_pe/library")
+set(CMAKE_LAZYTEN_DIR "path/to/lazyten" CACHE STRING "lazyten path")
+set(CMAKE_LIBINT_DIR "path/to/libint" CACHE STRING "libint path")
+set(CMAKE_PELIB_IFC_DIR "path/to/cppe" CACHE STRING "cppe path")
+
+include_directories(
+  ${CMAKE_LAZYTEN_DIR}/build/external/krims/src
+  ${CMAKE_LAZYTEN_DIR}/external/krims/src/
+  ${CMAKE_LAZYTEN_DIR}/external/krims/src/
+  ${CMAKE_LAZYTEN_DIR}/build/src
+  ${CMAKE_LAZYTEN_DIR}/src
+  ${CMAKE_LIBINT_DIR}/include
+  ${CMAKE_LIBINT_DIR}/libint2
+  ${CMAKE_PELIB_IFC_DIR}
+)
+
+link_directories(
+  ${CMAKE_LAZYTEN_DIR}/build/external/krims/src/krims
+  ${CMAKE_LAZYTEN_DIR}/build/src/lazyten
+  ${CMAKE_LIBINT_DIR}/lib
+  ${CMAKE_PELIB_IFC_DIR}
+)
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/usr/local/include/eigen3/")
 set(SOURCE_FILES main.cpp)
 add_executable(QMax ${SOURCE_FILES})
 target_link_libraries(QMax armadillo krims lazyten int2 lapack arpack cppe)

@@ -252,6 +252,8 @@ int main(int argc, char **argv) {
     double oldescf = 0.0;
     int maxSCFiterations = options["maxSCFcycles"].get_int();
     SmallMatrix<double> oldD(nbf, nbf);
+		SmallMatrix<double> oldFock(nbf, nbf);
+		SmallMatrix<double> fockPE(nbf, nbf);
     while (!converged) {
         Engine c_engine(Operator::coulomb,  // will compute overlap ints
                         basisSet.max_nprim(),    // max # of primitives in shells this engine will accept
@@ -340,10 +342,13 @@ int main(int argc, char **argv) {
 				}
 
 				if (peCalculation) {
-					SmallMatrix<double> fockPE = call_pe_fock(dmat);
-	        F = HCore + G + fockPE;
+					fockPE = call_pe_fock(dmat);
+					F = HCore + G;
+					oldFock = F;
+	        F += fockPE;
 				} else {
 					F = HCore + G;
+					oldFock = F;
 				}
 
         // cout << F.is_hermitian(1e-13) << " " << F.is_symmetric(1e-13) << endl;
@@ -360,7 +365,7 @@ int main(int argc, char **argv) {
 			for (size_t i = 0; i < nbf; i++) {
 				for (size_t j = 0; j < nbf; j++) {
 					// cout << finalD(i,j) << endl;
-					dmat.push_back(finalD(i,j));
+					dmat.push_back(oldD(i,j));
 				}
 			}
 			call_pe_energy(dmat);

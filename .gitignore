@@ -47,3 +47,4 @@ build/
 Makefile
 QMax
 cmake_install.cmake
+prepare_build.sh
