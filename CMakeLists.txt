@@ -5,6 +5,7 @@ project(QMax)
 set(CMAKE_LAZYTEN_DIR "path/to/lazyten" CACHE STRING "lazyten path")
 set(CMAKE_LIBINT_DIR "path/to/libint" CACHE STRING "libint path")
 set(CMAKE_PELIB_IFC_DIR "path/to/cppe" CACHE STRING "cppe path")
+set(CMAKE_EIGEN_DIR "path/to/eigen" CACHE STRING "eigen path")
 
 include_directories(
   ${CMAKE_LAZYTEN_DIR}/build/external/krims/src
@@ -14,6 +15,7 @@ include_directories(
   ${CMAKE_LAZYTEN_DIR}/src
   ${CMAKE_LIBINT_DIR}/include
   ${CMAKE_PELIB_IFC_DIR}
+  ${CMAKE_EIGEN_DIR}
 )
 
 link_directories(
