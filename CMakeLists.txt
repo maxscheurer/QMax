@@ -13,7 +13,6 @@ include_directories(
   ${CMAKE_LAZYTEN_DIR}/build/src
   ${CMAKE_LAZYTEN_DIR}/src
   ${CMAKE_LIBINT_DIR}/include
-  ${CMAKE_LIBINT_DIR}/libint2
   ${CMAKE_PELIB_IFC_DIR}
 )
 
@@ -21,7 +20,7 @@ link_directories(
   ${CMAKE_LAZYTEN_DIR}/build/external/krims/src/krims
   ${CMAKE_LAZYTEN_DIR}/build/src/lazyten
   ${CMAKE_LIBINT_DIR}/lib
-  ${CMAKE_PELIB_IFC_DIR}
+  ${CMAKE_PELIB_IFC_DIR}/build
 )
 
 set(CMAKE_CXX_STANDARD 11)
